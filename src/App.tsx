@@ -1,133 +1,177 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Icon from "@/components/ui/icon";
+
+const AUTH_URL = "https://functions.poehali.dev/5e4814d6-6634-4055-b8bb-c9f62e76e482";
 
 type Page = "home" | "profile" | "rules" | "moderation";
 
-const POSTS = [
-  {
-    id: 1,
-    author: "Артём_Про",
-    avatar: "А",
-    color: "#a855f7",
-    category: "Технологии",
-    title: "Как ИИ меняет разработку в 2026 году",
-    preview: "Разбираем актуальные инструменты и тренды, которые уже сейчас влияют на работу каждого разработчика...",
-    likes: 284,
-    comments: 47,
-    views: 3200,
-    time: "2 ч назад",
-    isPinned: true,
-    isHot: true,
-  },
-  {
-    id: 2,
-    author: "Лена_Дизайн",
-    avatar: "Л",
-    color: "#ec4899",
-    category: "Дизайн",
-    title: "Glassmorphism vs Neumorphism: что актуально сейчас",
-    preview: "Сравниваю два тренда, их применение в реальных проектах и когда стоит отказаться от обоих...",
-    likes: 156,
-    comments: 32,
-    views: 1890,
-    time: "5 ч назад",
-    isPinned: false,
-    isHot: true,
-  },
-  {
-    id: 3,
-    author: "Макс_Код",
-    avatar: "М",
-    color: "#3b82f6",
-    category: "Программирование",
-    title: "React 19 — всё что нужно знать",
-    preview: "Новые хуки, изменения в рендеринге и что это значит для ваших текущих проектов на практике...",
-    likes: 98,
-    comments: 21,
-    views: 1240,
-    time: "1 д назад",
-    isPinned: false,
-    isHot: false,
-  },
-  {
-    id: 4,
-    author: "Даша_StartUp",
-    avatar: "Д",
-    color: "#00ff88",
-    category: "Бизнес",
-    title: "Запустила MVP за 3 дня — честный отчёт",
-    preview: "Без команды, с минимальным бюджетом и максимумом кофе. Рассказываю что получилось и что провалилось...",
-    likes: 342,
-    comments: 89,
-    views: 5600,
-    time: "2 д назад",
-    isPinned: false,
-    isHot: false,
-  },
+interface User {
+  id: number;
+  username: string;
+  email: string;
+  avatarLetter: string;
+  avatarColor: string;
+  role: string;
+  reputation: number;
+  postsCount: number;
+  createdAt: string;
+}
+
+async function apiRequest(action: string, method: string, body?: object, token?: string) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["X-Session-Token"] = token;
+  const res = await fetch(`${AUTH_URL}?action=${action}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const raw = await res.json();
+  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return { ok: res.ok, status: res.status, data };
+}
+
+const DEMO_POSTS = [
+  { id: 1, author: "Артём_Про", avatar: "А", color: "#a855f7", category: "Технологии", title: "Как ИИ меняет разработку в 2026 году", preview: "Разбираем актуальные инструменты и тренды, которые уже сейчас влияют на работу каждого разработчика...", likes: 284, comments: 47, views: 3200, time: "2 ч назад", isPinned: true, isHot: true },
+  { id: 2, author: "Лена_Дизайн", avatar: "Л", color: "#ec4899", category: "Дизайн", title: "Glassmorphism vs Neumorphism: что актуально сейчас", preview: "Сравниваю два тренда, их применение в реальных проектах и когда стоит отказаться от обоих...", likes: 156, comments: 32, views: 1890, time: "5 ч назад", isPinned: false, isHot: true },
+  { id: 3, author: "Макс_Код", avatar: "М", color: "#3b82f6", category: "Программирование", title: "React 19 — всё что нужно знать", preview: "Новые хуки, изменения в рендеринге и что это значит для ваших текущих проектов...", likes: 98, comments: 21, views: 1240, time: "1 д назад", isPinned: false, isHot: false },
+  { id: 4, author: "Даша_StartUp", avatar: "Д", color: "#00ff88", category: "Бизнес", title: "Запустила MVP за 3 дня — честный отчёт", preview: "Без команды, с минимальным бюджетом и максимумом кофе. Рассказываю что получилось...", likes: 342, comments: 89, views: 5600, time: "2 д назад", isPinned: false, isHot: false },
 ];
 
-const USERS = [
+const DEMO_USERS = [
   { id: 1, name: "Артём_Про", avatar: "А", color: "#a855f7", posts: 284, rep: 1240, status: "активен", isBlocked: false },
   { id: 2, name: "Лена_Дизайн", avatar: "Л", color: "#ec4899", posts: 156, rep: 890, status: "активен", isBlocked: false },
   { id: 3, name: "СпамБот2000", avatar: "С", color: "#ef4444", posts: 3, rep: -50, status: "подозрительный", isBlocked: false },
   { id: 4, name: "Макс_Код", avatar: "М", color: "#3b82f6", posts: 98, rep: 560, status: "активен", isBlocked: false },
-  { id: 5, name: "Даша_StartUp", avatar: "Д", color: "#00ff88", posts: 342, rep: 2100, status: "активен", isBlocked: false },
-  { id: 6, name: "ТролльМод", avatar: "Т", color: "#f59e0b", posts: 12, rep: -120, status: "нарушитель", isBlocked: true },
+  { id: 5, name: "ТролльМод", avatar: "Т", color: "#f59e0b", posts: 12, rep: -120, status: "нарушитель", isBlocked: true },
 ];
 
 const RULES = [
-  {
-    num: "01",
-    title: "Уважение к участникам",
-    desc: "Запрещены оскорбления, дискриминация и агрессия в любой форме. Относитесь к другим так, как хотите, чтобы относились к вам.",
-    icon: "Heart",
-    color: "#ec4899",
-  },
-  {
-    num: "02",
-    title: "Актуальный контент",
-    desc: "Публикуйте материалы по теме раздела. Спам, реклама без согласования с администрацией и офтопик удаляются.",
-    icon: "Target",
-    color: "#a855f7",
-  },
-  {
-    num: "03",
-    title: "Достоверность информации",
-    desc: "Проверяйте источники перед публикацией. Фейки и намеренная дезинформация — причина бана без предупреждения.",
-    icon: "ShieldCheck",
-    color: "#3b82f6",
-  },
-  {
-    num: "04",
-    title: "Авторские права",
-    desc: "При использовании чужих материалов указывайте источник. Плагиат и копипаст без ссылки запрещены.",
-    icon: "Copyright",
-    color: "#00ff88",
-  },
-  {
-    num: "05",
-    title: "Конфиденциальность",
-    desc: "Не публикуйте личные данные других пользователей без их согласия. Это касается фото, адресов, контактов.",
-    icon: "Lock",
-    color: "#f59e0b",
-  },
-  {
-    num: "06",
-    title: "Система предупреждений",
-    desc: "1 предупреждение — устное замечание. 2 — ограничение на 7 дней. 3 — перманентный бан. Апелляции через поддержку.",
-    icon: "AlertTriangle",
-    color: "#ef4444",
-  },
+  { num: "01", title: "Уважение к участникам", desc: "Запрещены оскорбления, дискриминация и агрессия в любой форме. Относитесь к другим так, как хотите, чтобы относились к вам.", icon: "Heart", color: "#ec4899" },
+  { num: "02", title: "Актуальный контент", desc: "Публикуйте материалы по теме раздела. Спам, реклама без согласования с администрацией и офтопик удаляются.", icon: "Target", color: "#a855f7" },
+  { num: "03", title: "Достоверность информации", desc: "Проверяйте источники перед публикацией. Фейки и намеренная дезинформация — причина бана без предупреждения.", icon: "ShieldCheck", color: "#3b82f6" },
+  { num: "04", title: "Авторские права", desc: "При использовании чужих материалов указывайте источник. Плагиат и копипаст без ссылки запрещены.", icon: "Copyright", color: "#00ff88" },
+  { num: "05", title: "Конфиденциальность", desc: "Не публикуйте личные данные других пользователей без их согласия. Это касается фото, адресов, контактов.", icon: "Lock", color: "#f59e0b" },
+  { num: "06", title: "Система предупреждений", desc: "1 предупреждение — устное замечание. 2 — ограничение на 7 дней. 3 — перманентный бан. Апелляции через поддержку.", icon: "AlertTriangle", color: "#ef4444" },
 ];
 
-const STAT_CARDS = [
-  { label: "Участников", value: "12 847", icon: "Users", color: "#a855f7" },
-  { label: "Постов сегодня", value: "384", icon: "FileText", color: "#00ff88" },
-  { label: "Онлайн сейчас", value: "1 203", icon: "Wifi", color: "#3b82f6" },
-  { label: "Тем всего", value: "47 290", icon: "MessageSquare", color: "#ec4899" },
-];
+// ─── Auth Modal ───────────────────────────────────────────────────────────────
 
-function NavBar({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
+function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: User, token: string) => void }) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [form, setForm] = useState({ username: "", email: "", login: "", password: "" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    setError("");
+    setLoading(true);
+    try {
+      if (mode === "register") {
+        const { ok, data } = await apiRequest("register", "POST", { username: form.username, email: form.email, password: form.password });
+        if (!ok) { setError(data.error || "Ошибка регистрации"); return; }
+        onAuth(data.user, data.token);
+      } else {
+        const { ok, data } = await apiRequest("login", "POST", { login: form.login, password: form.password });
+        if (!ok) { setError(data.error || "Ошибка входа"); return; }
+        onAuth(data.user, data.token);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.7)", backdropFilter: "blur(8px)" }}>
+      <div className="w-full max-w-md glass-card rounded-2xl p-8 animate-slide-up relative" style={{ border: "1px solid rgba(168,85,247,0.2)" }}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-white/30 hover:text-white/60 transition-colors">
+          <Icon name="X" size={20} />
+        </button>
+
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+            <Icon name="Zap" size={18} className="text-white" />
+          </div>
+          <div>
+            <h2 className="font-oswald text-xl font-bold text-white">{mode === "login" ? "ВХОД" : "РЕГИСТРАЦИЯ"}</h2>
+            <p className="text-white/40 text-xs">{mode === "login" ? "Войдите в аккаунт" : "Создайте аккаунт"}</p>
+          </div>
+        </div>
+
+        <div className="flex gap-1 mb-6 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
+          {(["login", "register"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => { setMode(m); setError(""); }}
+              className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${mode === m ? "text-white" : "text-white/40 hover:text-white/60"}`}
+              style={mode === m ? { background: "linear-gradient(135deg, rgba(168,85,247,0.3), rgba(59,130,246,0.2))" } : {}}
+            >
+              {m === "login" ? "Вход" : "Регистрация"}
+            </button>
+          ))}
+        </div>
+
+        <div className="space-y-3">
+          {mode === "register" && (
+            <div>
+              <label className="text-white/50 text-xs mb-1 block">Никнейм</label>
+              <input type="text" value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="Ваш никнейм"
+                className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                onFocus={(e) => (e.target.style.borderColor = "#a855f7")} onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")} />
+            </div>
+          )}
+          {mode === "register" && (
+            <div>
+              <label className="text-white/50 text-xs mb-1 block">Email</label>
+              <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="your@email.com"
+                className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                onFocus={(e) => (e.target.style.borderColor = "#a855f7")} onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")} />
+            </div>
+          )}
+          {mode === "login" && (
+            <div>
+              <label className="text-white/50 text-xs mb-1 block">Никнейм или Email</label>
+              <input type="text" value={form.login} onChange={(e) => set("login", e.target.value)} placeholder="Никнейм или email"
+                className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
+                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                onFocus={(e) => (e.target.style.borderColor = "#a855f7")} onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")} />
+            </div>
+          )}
+          <div>
+            <label className="text-white/50 text-xs mb-1 block">Пароль {mode === "register" && <span className="text-white/30">(минимум 6 символов)</span>}</label>
+            <input type="password" value={form.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••••"
+              className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+              onFocus={(e) => (e.target.style.borderColor = "#a855f7")} onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
+              onKeyDown={(e) => e.key === "Enter" && submit()} />
+          </div>
+        </div>
+
+        {error && (
+          <div className="mt-3 px-3 py-2 rounded-lg text-sm flex items-center gap-2" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+            <Icon name="AlertCircle" size={14} />{error}
+          </div>
+        )}
+
+        <button onClick={submit} disabled={loading}
+          className="w-full mt-5 py-3 rounded-xl font-semibold text-white text-sm transition-all hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+          style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+          {loading ? <><Icon name="Loader2" size={16} className="animate-spin" /> Загрузка...</> : mode === "login" ? "Войти" : "Зарегистрироваться"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── NavBar ───────────────────────────────────────────────────────────────────
+
+function NavBar({ page, setPage, user, onAuthClick, onLogout }: {
+  page: Page; setPage: (p: Page) => void;
+  user: User | null; onAuthClick: () => void; onLogout: () => void;
+}) {
   const nav = [
     { id: "home" as Page, label: "Главная", icon: "Home" },
     { id: "profile" as Page, label: "Профиль", icon: "User" },
@@ -147,35 +191,38 @@ function NavBar({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
 
         <nav className="hidden md:flex items-center gap-1">
           {nav.map((item) => (
-            <button
-              key={item.id}
-              onClick={() => setPage(item.id)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
-                page === item.id ? "text-white" : "text-white/50 hover:text-white/80 hover:bg-white/5"
-              }`}
-              style={page === item.id ? { background: "linear-gradient(135deg, rgba(168,85,247,0.2), rgba(59,130,246,0.2))", color: "#a855f7" } : {}}
-            >
-              <Icon name={item.icon} size={15} />
-              {item.label}
+            <button key={item.id} onClick={() => setPage(item.id)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${page === item.id ? "text-white" : "text-white/50 hover:text-white/80 hover:bg-white/5"}`}
+              style={page === item.id ? { background: "linear-gradient(135deg, rgba(168,85,247,0.2), rgba(59,130,246,0.2))", color: "#a855f7" } : {}}>
+              <Icon name={item.icon} size={15} />{item.label}
             </button>
           ))}
         </nav>
 
-        <button className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
-          <Icon name="Plus" size={15} />
-          Создать тему
-        </button>
+        {user ? (
+          <div className="flex items-center gap-3">
+            <button onClick={() => setPage("profile")} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
+              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs" style={{ background: `${user.avatarColor}40`, border: `1px solid ${user.avatarColor}40` }}>
+                {user.avatarLetter}
+              </div>
+              <span className="text-white/80 text-sm font-medium hidden md:block">{user.username}</span>
+            </button>
+            <button onClick={onLogout} className="text-white/30 hover:text-white/60 transition-colors" title="Выйти">
+              <Icon name="LogOut" size={18} />
+            </button>
+          </div>
+        ) : (
+          <button onClick={onAuthClick} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+            <Icon name="LogIn" size={15} />Войти
+          </button>
+        )}
       </div>
 
       <div className="md:hidden flex border-t border-white/5">
         {nav.map((item) => (
-          <button
-            key={item.id}
-            onClick={() => setPage(item.id)}
-            className={`flex-1 flex flex-col items-center gap-1 py-2 text-xs transition-all ${page === item.id ? "text-purple-400" : "text-white/40"}`}
-          >
-            <Icon name={item.icon} size={18} />
-            {item.label}
+          <button key={item.id} onClick={() => setPage(item.id)}
+            className={`flex-1 flex flex-col items-center gap-1 py-2 text-xs transition-all ${page === item.id ? "text-purple-400" : "text-white/40"}`}>
+            <Icon name={item.icon} size={18} />{item.label}
           </button>
         ))}
       </div>
@@ -183,7 +230,9 @@ function NavBar({ page, setPage }: { page: Page; setPage: (p: Page) => void }) {
   );
 }
 
-function HomePage() {
+// ─── Home Page ────────────────────────────────────────────────────────────────
+
+function HomePage({ onAuthClick, user }: { onAuthClick: () => void; user: User | null }) {
   const [activeCategory, setActiveCategory] = useState("Все");
   const categories = ["Все", "Технологии", "Дизайн", "Программирование", "Бизнес"];
 
@@ -197,15 +246,24 @@ function HomePage() {
             1 203 участника онлайн
           </div>
           <h1 className="font-oswald text-4xl md:text-5xl font-bold text-white mb-3 tracking-wide">
-            ДОБРО ПОЖАЛОВАТЬ<br />
-            <span className="neon-text-purple">В СООБЩЕСТВО</span>
+            ДОБРО ПОЖАЛОВАТЬ<br /><span className="neon-text-purple">В СООБЩЕСТВО</span>
           </h1>
-          <p className="text-white/60 text-lg max-w-lg">Место, где идеи становятся обсуждениями, а незнакомцы — единомышленниками.</p>
+          <p className="text-white/60 text-lg max-w-lg mb-5">Место, где идеи становятся обсуждениями, а незнакомцы — единомышленниками.</p>
+          {!user && (
+            <button onClick={onAuthClick} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white text-sm hover:opacity-90 transition-all" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+              <Icon name="UserPlus" size={16} />Присоединиться
+            </button>
+          )}
         </div>
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        {STAT_CARDS.map((s, i) => (
+        {[
+          { label: "Участников", value: "12 847", icon: "Users", color: "#a855f7" },
+          { label: "Постов сегодня", value: "384", icon: "FileText", color: "#00ff88" },
+          { label: "Онлайн сейчас", value: "1 203", icon: "Wifi", color: "#3b82f6" },
+          { label: "Тем всего", value: "47 290", icon: "MessageSquare", color: "#ec4899" },
+        ].map((s, i) => (
           <div key={i} className="glass-card rounded-xl p-4 animate-slide-up" style={{ animationDelay: `${i * 0.08}s` }}>
             <div className="flex items-center gap-3 mb-2">
               <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${s.color}20` }}>
@@ -220,42 +278,25 @@ function HomePage() {
 
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
         {categories.map((cat) => (
-          <button
-            key={cat}
-            onClick={() => setActiveCategory(cat)}
-            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${
-              activeCategory === cat ? "text-white" : "text-white/50 hover:text-white/80 bg-white/5 hover:bg-white/8"
-            }`}
-            style={activeCategory === cat ? { background: "linear-gradient(135deg, #a855f7, #3b82f6)" } : {}}
-          >
+          <button key={cat} onClick={() => setActiveCategory(cat)}
+            className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${activeCategory === cat ? "text-white" : "text-white/50 hover:text-white/80 bg-white/5"}`}
+            style={activeCategory === cat ? { background: "linear-gradient(135deg, #a855f7, #3b82f6)" } : {}}>
             {cat}
           </button>
         ))}
       </div>
 
       <div className="space-y-3">
-        {POSTS.filter((p) => activeCategory === "Все" || p.category === activeCategory).map((post, i) => (
-          <div
-            key={post.id}
-            className="glass-card rounded-xl p-5 cursor-pointer hover:bg-white/6 transition-all duration-200 animate-slide-up group"
-            style={{ animationDelay: `${i * 0.07}s` }}
-          >
+        {DEMO_POSTS.filter((p) => activeCategory === "Все" || p.category === activeCategory).map((post, i) => (
+          <div key={post.id} className="glass-card rounded-xl p-5 cursor-pointer hover:bg-white/6 transition-all duration-200 animate-slide-up group" style={{ animationDelay: `${i * 0.07}s` }}>
             <div className="flex items-start gap-4">
               <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ background: `${post.color}30`, border: `1px solid ${post.color}40` }}>
                 {post.avatar}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  {post.isPinned && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ background: "rgba(168,85,247,0.15)", color: "#a855f7" }}>
-                      <Icon name="Pin" size={10} /> Закреплено
-                    </span>
-                  )}
-                  {post.isHot && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>
-                      🔥 Горячее
-                    </span>
-                  )}
+                  {post.isPinned && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ background: "rgba(168,85,247,0.15)", color: "#a855f7" }}><Icon name="Pin" size={10} /> Закреплено</span>}
+                  {post.isHot && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>🔥 Горячее</span>}
                   <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>{post.category}</span>
                 </div>
                 <h3 className="font-semibold text-white group-hover:text-purple-300 transition-colors mb-1 text-base">{post.title}</h3>
@@ -276,21 +317,27 @@ function HomePage() {
   );
 }
 
-function ProfilePage() {
-  const userActivities = [
-    { type: "post", text: 'Создал тему "Как ИИ меняет разработку в 2026 году"', time: "2 часа назад", icon: "FileText", color: "#a855f7" },
-    { type: "comment", text: 'Прокомментировал "Glassmorphism vs Neumorphism"', time: "5 часов назад", icon: "MessageSquare", color: "#3b82f6" },
-    { type: "like", text: "Отметил 8 постов", time: "Вчера", icon: "Heart", color: "#ec4899" },
-    { type: "post", text: 'Создал тему "React 19 — всё что нужно знать"', time: "3 дня назад", icon: "FileText", color: "#a855f7" },
-    { type: "badge", text: 'Получил значок "Эксперт сообщества"', time: "5 дней назад", icon: "Award", color: "#00ff88" },
-    { type: "comment", text: 'Прокомментировал "Запустила MVP за 3 дня"', time: "1 неделю назад", icon: "MessageSquare", color: "#3b82f6" },
-  ];
+// ─── Profile Page ─────────────────────────────────────────────────────────────
+
+function ProfilePage({ user, onAuthClick }: { user: User | null; onAuthClick: () => void }) {
+  if (!user) {
+    return (
+      <div className="animate-fade-in flex flex-col items-center justify-center py-24 text-center">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(168,85,247,0.1)" }}>
+          <Icon name="User" size={32} className="text-purple-400" />
+        </div>
+        <h2 className="font-oswald text-2xl font-bold text-white mb-2">ВОЙДИТЕ В АККАУНТ</h2>
+        <p className="text-white/50 mb-6">Чтобы увидеть профиль, нужно авторизоваться</p>
+        <button onClick={onAuthClick} className="px-6 py-3 rounded-xl font-semibold text-white text-sm" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+          Войти или зарегистрироваться
+        </button>
+      </div>
+    );
+  }
 
   const badges = [
-    { name: "Эксперт", icon: "Award", color: "#00ff88" },
-    { name: "Топ-автор", icon: "Star", color: "#f59e0b" },
-    { name: "Первопроходец", icon: "Compass", color: "#a855f7" },
-    { name: "Помощник", icon: "HandHeart", color: "#ec4899" },
+    { name: "Участник", icon: "Award", color: "#00ff88" },
+    { name: "Новичок", icon: "Star", color: "#f59e0b" },
   ];
 
   return (
@@ -299,26 +346,24 @@ function ProfilePage() {
         <div className="absolute inset-0 opacity-30" style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.15), transparent 60%)" }} />
         <div className="relative flex flex-col md:flex-row gap-6 items-start md:items-center">
           <div className="relative">
-            <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white font-bold text-3xl font-oswald" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
-              А
+            <div className="w-20 h-20 rounded-2xl flex items-center justify-center text-white font-bold text-3xl font-oswald" style={{ background: `linear-gradient(135deg, ${user.avatarColor}, #3b82f6)` }}>
+              {user.avatarLetter}
             </div>
-            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-background flex items-center justify-center" style={{ background: "#00ff88" }}>
-              <div className="w-2 h-2 rounded-full bg-black" />
-            </div>
+            <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full border-2 border-background" style={{ background: "#00ff88" }} />
           </div>
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-1">
-              <h2 className="font-oswald text-2xl font-bold text-white">Артём_Про</h2>
-              <span className="px-2 py-0.5 rounded text-xs font-bold" style={{ background: "rgba(168,85,247,0.2)", color: "#a855f7" }}>МОДЕРАТОР</span>
+              <h2 className="font-oswald text-2xl font-bold text-white">{user.username}</h2>
+              {user.role === "moderator" && <span className="px-2 py-0.5 rounded text-xs font-bold" style={{ background: "rgba(168,85,247,0.2)", color: "#a855f7" }}>МОДЕРАТОР</span>}
             </div>
-            <p className="text-white/50 text-sm mb-3">Участник с марта 2024 · Москва</p>
-            <p className="text-white/70 text-sm max-w-md">Разработчик, люблю делиться знаниями об ИИ и современных технологиях. Пишу понятно о сложном.</p>
+            <p className="text-white/50 text-sm mb-1">Участник с {new Date(user.createdAt).toLocaleDateString("ru-RU")}</p>
+            <p className="text-white/50 text-sm">{user.email}</p>
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             {[
-              { label: "Постов", val: "284" },
-              { label: "Репутация", val: "1 240" },
-              { label: "Подписчики", val: "892" },
+              { label: "Постов", val: user.postsCount.toString() },
+              { label: "Репутация", val: user.reputation.toString() },
+              { label: "Статус", val: "Онлайн" },
             ].map((s) => (
               <div key={s.label}>
                 <div className="font-oswald text-xl font-bold text-white">{s.val}</div>
@@ -336,12 +381,15 @@ function ProfilePage() {
             ПОСЛЕДНЯЯ АКТИВНОСТЬ
           </h3>
           <div className="space-y-3">
-            {userActivities.map((act, i) => (
-              <div key={i} className="glass-card rounded-xl p-4 flex items-start gap-3 animate-slide-up" style={{ animationDelay: `${i * 0.06}s` }}>
+            {[
+              { text: "Зарегистрировался на форуме", time: new Date(user.createdAt).toLocaleDateString("ru-RU"), icon: "UserPlus", color: "#00ff88" },
+              { text: "Стал участником сообщества", time: "Добро пожаловать!", icon: "Award", color: "#a855f7" },
+            ].map((act, i) => (
+              <div key={i} className="glass-card rounded-xl p-4 flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${act.color}20` }}>
                   <Icon name={act.icon} size={15} style={{ color: act.color }} />
                 </div>
-                <div className="flex-1 min-w-0">
+                <div>
                   <p className="text-white/80 text-sm">{act.text}</p>
                   <p className="text-white/35 text-xs mt-1">{act.time}</p>
                 </div>
@@ -350,48 +398,28 @@ function ProfilePage() {
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div>
-            <h3 className="font-oswald text-lg font-bold text-white mb-4 flex items-center gap-2">
-              <Icon name="Award" size={18} className="text-yellow-400" />
-              ДОСТИЖЕНИЯ
-            </h3>
-            <div className="grid grid-cols-2 gap-3">
-              {badges.map((b, i) => (
-                <div key={i} className="glass-card rounded-xl p-3 flex flex-col items-center gap-2 text-center gradient-border animate-slide-up" style={{ animationDelay: `${i * 0.08}s` }}>
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: `${b.color}20` }}>
-                    <Icon name={b.icon} size={20} style={{ color: b.color }} />
-                  </div>
-                  <span className="text-xs text-white/60">{b.name}</span>
+        <div>
+          <h3 className="font-oswald text-lg font-bold text-white mb-4 flex items-center gap-2">
+            <Icon name="Award" size={18} className="text-yellow-400" />
+            ДОСТИЖЕНИЯ
+          </h3>
+          <div className="grid grid-cols-2 gap-3">
+            {badges.map((b, i) => (
+              <div key={i} className="glass-card rounded-xl p-3 flex flex-col items-center gap-2 text-center gradient-border">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: `${b.color}20` }}>
+                  <Icon name={b.icon} size={20} style={{ color: b.color }} />
                 </div>
-              ))}
-            </div>
-          </div>
-          <div className="glass-card rounded-xl p-4">
-            <h4 className="font-semibold text-white/80 text-sm mb-3">Активность за месяц</h4>
-            <div className="space-y-2">
-              {[
-                { label: "Посты", val: 24, max: 30, color: "#a855f7" },
-                { label: "Комментарии", val: 87, max: 100, color: "#3b82f6" },
-                { label: "Лайки", val: 156, max: 200, color: "#ec4899" },
-              ].map((item) => (
-                <div key={item.label}>
-                  <div className="flex justify-between text-xs text-white/50 mb-1">
-                    <span>{item.label}</span>
-                    <span style={{ color: item.color }}>{item.val}</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-white/10">
-                    <div className="h-full rounded-full transition-all" style={{ width: `${(item.val / item.max) * 100}%`, background: item.color }} />
-                  </div>
-                </div>
-              ))}
-            </div>
+                <span className="text-xs text-white/60">{b.name}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
     </div>
   );
 }
+
+// ─── Rules Page ───────────────────────────────────────────────────────────────
 
 function RulesPage() {
   const [openRule, setOpenRule] = useState<number | null>(null);
@@ -400,8 +428,7 @@ function RulesPage() {
     <div className="animate-fade-in">
       <div className="mb-8">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4" style={{ background: "rgba(168,85,247,0.1)", color: "#a855f7", border: "1px solid rgba(168,85,247,0.2)" }}>
-          <Icon name="BookOpen" size={12} />
-          Обновлено 10 апреля 2026
+          <Icon name="BookOpen" size={12} />Обновлено 10 апреля 2026
         </div>
         <h1 className="font-oswald text-4xl font-bold text-white mb-3">ПРАВИЛА И ГАЙДЛАЙНЫ</h1>
         <p className="text-white/50 max-w-xl">Эти правила созданы чтобы форум оставался местом уважительного и продуктивного общения для всех участников.</p>
@@ -421,8 +448,7 @@ function RulesPage() {
               { emoji: "⚡", text: "3 нарушения — бан навсегда" },
             ].map((item, i) => (
               <div key={i} className="flex items-center gap-3 text-sm text-white/70">
-                <span className="text-lg">{item.emoji}</span>
-                {item.text}
+                <span className="text-lg">{item.emoji}</span>{item.text}
               </div>
             ))}
           </div>
@@ -431,12 +457,7 @@ function RulesPage() {
 
       <div className="space-y-3">
         {RULES.map((rule, i) => (
-          <div
-            key={i}
-            className="glass-card rounded-xl overflow-hidden cursor-pointer animate-slide-up"
-            style={{ animationDelay: `${i * 0.06}s` }}
-            onClick={() => setOpenRule(openRule === i ? null : i)}
-          >
+          <div key={i} className="glass-card rounded-xl overflow-hidden cursor-pointer animate-slide-up" style={{ animationDelay: `${i * 0.06}s` }} onClick={() => setOpenRule(openRule === i ? null : i)}>
             <div className="p-5 flex items-center gap-4">
               <div className="font-oswald text-3xl font-bold opacity-20 text-white w-10 flex-shrink-0">{rule.num}</div>
               <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0" style={{ background: `${rule.color}20` }}>
@@ -466,45 +487,43 @@ function RulesPage() {
   );
 }
 
-function ModerationPage() {
-  const [users, setUsers] = useState(USERS);
-  const [posts, setPosts] = useState(POSTS);
+// ─── Moderation Page ──────────────────────────────────────────────────────────
+
+function ModerationPage({ user, onAuthClick }: { user: User | null; onAuthClick: () => void }) {
+  const [modUsers, setModUsers] = useState(DEMO_USERS);
+  const [posts, setPosts] = useState(DEMO_POSTS);
   const [deletedCount, setDeletedCount] = useState(0);
   const [activeTab, setActiveTab] = useState<"posts" | "users">("posts");
   const [notification, setNotification] = useState<string | null>(null);
 
-  const notify = (msg: string) => {
-    setNotification(msg);
-    setTimeout(() => setNotification(null), 3000);
-  };
+  const notify = (msg: string) => { setNotification(msg); setTimeout(() => setNotification(null), 3000); };
 
-  const deletePost = (id: number) => {
-    setPosts((prev) => prev.filter((p) => p.id !== id));
-    setDeletedCount((prev) => prev + 1);
-    notify("Пост удалён");
-  };
-
-  const toggleBlock = (id: number) => {
-    const user = users.find((u) => u.id === id);
-    setUsers((prev) => prev.map((u) => (u.id === id ? { ...u, isBlocked: !u.isBlocked } : u)));
-    notify(user?.isBlocked ? `${user.name} разблокирован` : `${user?.name} заблокирован`);
-  };
+  if (!user) {
+    return (
+      <div className="animate-fade-in flex flex-col items-center justify-center py-24 text-center">
+        <div className="w-16 h-16 rounded-2xl flex items-center justify-center mb-4" style={{ background: "rgba(239,68,68,0.1)" }}>
+          <Icon name="Shield" size={32} className="text-red-400" />
+        </div>
+        <h2 className="font-oswald text-2xl font-bold text-white mb-2">ДОСТУП ЗАКРЫТ</h2>
+        <p className="text-white/50 mb-6">Войдите в аккаунт для доступа к панели модерации</p>
+        <button onClick={onAuthClick} className="px-6 py-3 rounded-xl font-semibold text-white text-sm" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+          Войти или зарегистрироваться
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="animate-fade-in">
       {notification && (
         <div className="fixed top-20 right-4 z-50 px-4 py-3 rounded-xl text-white text-sm font-medium animate-slide-up" style={{ background: "linear-gradient(135deg, rgba(168,85,247,0.9), rgba(59,130,246,0.9))", backdropFilter: "blur(12px)" }}>
-          <div className="flex items-center gap-2">
-            <Icon name="CheckCircle" size={16} />
-            {notification}
-          </div>
+          <div className="flex items-center gap-2"><Icon name="CheckCircle" size={16} />{notification}</div>
         </div>
       )}
 
       <div className="mb-6">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
-          <Icon name="Shield" size={12} />
-          Панель модератора
+          <Icon name="Shield" size={12} />Панель модератора · {user.username}
         </div>
         <h1 className="font-oswald text-4xl font-bold text-white mb-3">СИСТЕМА МОДЕРАЦИИ</h1>
         <p className="text-white/50">Управляйте контентом и участниками сообщества.</p>
@@ -514,7 +533,7 @@ function ModerationPage() {
         {[
           { label: "Жалоб сегодня", val: "7", color: "#ef4444", icon: "Flag" },
           { label: "Удалено постов", val: deletedCount.toString(), color: "#f59e0b", icon: "Trash2" },
-          { label: "Заблокировано", val: users.filter((u) => u.isBlocked).length.toString(), color: "#a855f7", icon: "UserX" },
+          { label: "Заблокировано", val: modUsers.filter((u) => u.isBlocked).length.toString(), color: "#a855f7", icon: "UserX" },
         ].map((s, i) => (
           <div key={i} className="glass-card rounded-xl p-4">
             <div className="flex items-center gap-2 mb-1">
@@ -527,18 +546,11 @@ function ModerationPage() {
       </div>
 
       <div className="flex gap-2 mb-5 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
-        {[
-          { id: "posts" as const, label: "Посты", icon: "FileText" },
-          { id: "users" as const, label: "Пользователи", icon: "Users" },
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
+        {[{ id: "posts" as const, label: "Посты", icon: "FileText" }, { id: "users" as const, label: "Пользователи", icon: "Users" }].map((tab) => (
+          <button key={tab.id} onClick={() => setActiveTab(tab.id)}
             className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-medium transition-all ${activeTab === tab.id ? "text-white" : "text-white/40 hover:text-white/70"}`}
-            style={activeTab === tab.id ? { background: "linear-gradient(135deg, rgba(168,85,247,0.3), rgba(59,130,246,0.2))" } : {}}
-          >
-            <Icon name={tab.icon} size={15} />
-            {tab.label}
+            style={activeTab === tab.id ? { background: "linear-gradient(135deg, rgba(168,85,247,0.3), rgba(59,130,246,0.2))" } : {}}>
+            <Icon name={tab.icon} size={15} />{tab.label}
           </button>
         ))}
       </div>
@@ -563,20 +575,14 @@ function ModerationPage() {
                     <p className="text-white/40 text-xs mt-0.5">{post.author} · {post.time}</p>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <button
-                      onClick={() => deletePost(post.id)}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-90"
-                      style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}
-                    >
-                      <Icon name="Trash2" size={12} />
-                      Удалить
+                    <button onClick={() => { setPosts((p) => p.filter((x) => x.id !== post.id)); setDeletedCount((n) => n + 1); notify("Пост удалён"); }}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                      style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+                      <Icon name="Trash2" size={12} />Удалить
                     </button>
-                    <button
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-90"
-                      style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.08)" }}
-                    >
-                      <Icon name="Pin" size={12} />
-                      Закрепить
+                    <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                      style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                      <Icon name="Pin" size={12} />Закрепить
                     </button>
                   </div>
                 </div>
@@ -588,38 +594,25 @@ function ModerationPage() {
 
       {activeTab === "users" && (
         <div className="space-y-3">
-          {users.map((user, i) => (
-            <div
-              key={user.id}
-              className={`glass-card rounded-xl p-4 flex items-center gap-4 animate-slide-up transition-all ${user.isBlocked ? "opacity-50" : ""}`}
-              style={{ animationDelay: `${i * 0.05}s` }}
-            >
-              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ background: `${user.color}30`, border: `1px solid ${user.color}30` }}>
-                {user.avatar}
+          {modUsers.map((u, i) => (
+            <div key={u.id} className={`glass-card rounded-xl p-4 flex items-center gap-4 animate-slide-up transition-all ${u.isBlocked ? "opacity-50" : ""}`} style={{ animationDelay: `${i * 0.05}s` }}>
+              <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ background: `${u.color}30`, border: `1px solid ${u.color}30` }}>
+                {u.avatar}
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 mb-0.5">
-                  <span className="font-medium text-white text-sm">{user.name}</span>
-                  {user.isBlocked && <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>Заблокирован</span>}
-                  {user.status === "подозрительный" && !user.isBlocked && <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>⚠️ Подозрительный</span>}
-                  {user.status === "нарушитель" && !user.isBlocked && <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>🚫 Нарушитель</span>}
+                  <span className="font-medium text-white text-sm">{u.name}</span>
+                  {u.isBlocked && <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>Заблокирован</span>}
+                  {u.status === "подозрительный" && !u.isBlocked && <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}>⚠️ Подозрительный</span>}
+                  {u.status === "нарушитель" && !u.isBlocked && <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>🚫 Нарушитель</span>}
                 </div>
-                <p className="text-white/40 text-xs">
-                  {user.posts} постов · Репутация:{" "}
-                  <span style={{ color: user.rep >= 0 ? "#00ff88" : "#ef4444" }}>{user.rep > 0 ? "+" : ""}{user.rep}</span>
-                </p>
+                <p className="text-white/40 text-xs">{u.posts} постов · Репутация: <span style={{ color: u.rep >= 0 ? "#00ff88" : "#ef4444" }}>{u.rep > 0 ? "+" : ""}{u.rep}</span></p>
               </div>
-              <button
-                onClick={() => toggleBlock(user.id)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all hover:opacity-90"
-                style={
-                  user.isBlocked
-                    ? { background: "rgba(0,255,136,0.15)", color: "#00ff88", border: "1px solid rgba(0,255,136,0.2)" }
-                    : { background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }
-                }
-              >
-                <Icon name={user.isBlocked ? "UserCheck" : "UserX"} size={12} />
-                {user.isBlocked ? "Разблокировать" : "Заблокировать"}
+              <button onClick={() => { setModUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, isBlocked: !x.isBlocked } : x)); notify(u.isBlocked ? `${u.name} разблокирован` : `${u.name} заблокирован`); }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
+                style={u.isBlocked ? { background: "rgba(0,255,136,0.15)", color: "#00ff88", border: "1px solid rgba(0,255,136,0.2)" } : { background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+                <Icon name={u.isBlocked ? "UserCheck" : "UserX"} size={12} />
+                {u.isBlocked ? "Разблокировать" : "Заблокировать"}
               </button>
             </div>
           ))}
@@ -629,24 +622,50 @@ function ModerationPage() {
   );
 }
 
+// ─── App Root ─────────────────────────────────────────────────────────────────
+
 export default function App() {
   const [page, setPage] = useState<Page>("home");
+  const [user, setUser] = useState<User | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
+
+  useEffect(() => {
+    const token = localStorage.getItem("forum_token");
+    if (token) {
+      apiRequest("me", "GET", undefined, token).then(({ ok, data }) => {
+        if (ok) setUser(data.user);
+        else localStorage.removeItem("forum_token");
+      });
+    }
+  }, []);
+
+  const handleAuth = (u: User, token: string) => {
+    setUser(u);
+    localStorage.setItem("forum_token", token);
+    setShowAuth(false);
+  };
+
+  const handleLogout = async () => {
+    const token = localStorage.getItem("forum_token");
+    if (token) await apiRequest("logout", "POST", undefined, token);
+    setUser(null);
+    localStorage.removeItem("forum_token");
+  };
 
   const renderPage = () => {
     switch (page) {
-      case "home": return <HomePage />;
-      case "profile": return <ProfilePage />;
+      case "home": return <HomePage user={user} onAuthClick={() => setShowAuth(true)} />;
+      case "profile": return <ProfilePage user={user} onAuthClick={() => setShowAuth(true)} />;
       case "rules": return <RulesPage />;
-      case "moderation": return <ModerationPage />;
+      case "moderation": return <ModerationPage user={user} onAuthClick={() => setShowAuth(true)} />;
     }
   };
 
   return (
     <div className="min-h-screen bg-background grid-bg">
-      <NavBar page={page} setPage={setPage} />
-      <main className="max-w-6xl mx-auto px-4 pt-24 pb-12">
-        {renderPage()}
-      </main>
+      <NavBar page={page} setPage={setPage} user={user} onAuthClick={() => setShowAuth(true)} onLogout={handleLogout} />
+      <main className="max-w-6xl mx-auto px-4 pt-24 pb-12">{renderPage()}</main>
+      {showAuth && <AuthModal onClose={() => setShowAuth(false)} onAuth={handleAuth} />}
     </div>
   );
 }

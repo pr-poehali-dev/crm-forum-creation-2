@@ -7,6 +7,7 @@ export default {
 		"./components/**/*.{ts,tsx}",
 		"./app/**/*.{ts,tsx}",
 		"./src/**/*.{ts,tsx}",
+			"./1776947782880479303.html"
 	],
 	prefix: "",
 	theme: {
@@ -86,9 +87,30 @@ export default {
 					}
 				}
 			},
+			fontFamily: {
+				'golos': ['Golos Text', 'sans-serif'],
+				'oswald': ['Oswald', 'sans-serif'],
+			},
 			animation: {
 				'accordion-down': 'accordion-down 0.2s ease-out',
-				'accordion-up': 'accordion-up 0.2s ease-out'
+				'accordion-up': 'accordion-up 0.2s ease-out',
+				'fade-in': 'fadeIn 0.4s ease-out both',
+				'slide-up': 'slideUp 0.5s ease-out both',
+				'pulse-neon': 'pulse-neon 2s ease-in-out infinite',
+			},
+			keyframes: {
+				fadeIn: {
+					from: { opacity: '0', transform: 'translateY(8px)' },
+					to: { opacity: '1', transform: 'translateY(0)' },
+				},
+				slideUp: {
+					from: { opacity: '0', transform: 'translateY(24px)' },
+					to: { opacity: '1', transform: 'translateY(0)' },
+				},
+				'pulse-neon': {
+					'0%, 100%': { boxShadow: '0 0 20px rgba(168, 85, 247, 0.4)' },
+					'50%': { boxShadow: '0 0 40px rgba(168, 85, 247, 0.8), 0 0 60px rgba(168, 85, 247, 0.3)' },
+				},
 			}
 		}
 	},

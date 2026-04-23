@@ -1,0 +1,19 @@
+{
+  "tests": [
+    {
+      "name": "List posts",
+      "method": "GET",
+      "path": "/?action=list",
+      "expectedStatus": 200,
+      "bodyMatcher": "none"
+    },
+    {
+      "name": "Create post without auth",
+      "method": "POST",
+      "path": "/?action=create",
+      "body": {"title": "Test", "content": "Content", "category": "Общее"},
+      "expectedStatus": 401,
+      "bodyMatcher": "none"
+    }
+  ]
+}

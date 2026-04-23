@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import Icon from "@/components/ui/icon";
 
 const AUTH_URL = "https://functions.poehali.dev/5e4814d6-6634-4055-b8bb-c9f62e76e482";
+const POSTS_URL = "https://functions.poehali.dev/35774357-8759-4fe4-a89a-584dc6cc1ddb";
 
 type Page = "home" | "profile" | "rules" | "moderation";
 
@@ -17,25 +18,44 @@ interface User {
   createdAt: string;
 }
 
-async function apiRequest(action: string, method: string, body?: object, token?: string) {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (token) headers["X-Session-Token"] = token;
-  const res = await fetch(`${AUTH_URL}?action=${action}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
-  const raw = await res.json();
-  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
-  return { ok: res.ok, status: res.status, data };
+interface Post {
+  id: number;
+  userId: number;
+  author: string;
+  avatar: string;
+  color: string;
+  title: string;
+  preview: string;
+  category: string;
+  likes: number;
+  comments: number;
+  views: number;
+  isPinned: boolean;
+  time: string;
 }
 
-const DEMO_POSTS = [
-  { id: 1, author: "Артём_Про", avatar: "А", color: "#a855f7", category: "Технологии", title: "Как ИИ меняет разработку в 2026 году", preview: "Разбираем актуальные инструменты и тренды, которые уже сейчас влияют на работу каждого разработчика...", likes: 284, comments: 47, views: 3200, time: "2 ч назад", isPinned: true, isHot: true },
-  { id: 2, author: "Лена_Дизайн", avatar: "Л", color: "#ec4899", category: "Дизайн", title: "Glassmorphism vs Neumorphism: что актуально сейчас", preview: "Сравниваю два тренда, их применение в реальных проектах и когда стоит отказаться от обоих...", likes: 156, comments: 32, views: 1890, time: "5 ч назад", isPinned: false, isHot: true },
-  { id: 3, author: "Макс_Код", avatar: "М", color: "#3b82f6", category: "Программирование", title: "React 19 — всё что нужно знать", preview: "Новые хуки, изменения в рендеринге и что это значит для ваших текущих проектов...", likes: 98, comments: 21, views: 1240, time: "1 д назад", isPinned: false, isHot: false },
-  { id: 4, author: "Даша_StartUp", avatar: "Д", color: "#00ff88", category: "Бизнес", title: "Запустила MVP за 3 дня — честный отчёт", preview: "Без команды, с минимальным бюджетом и максимумом кофе. Рассказываю что получилось...", likes: 342, comments: 89, views: 5600, time: "2 д назад", isPinned: false, isHot: false },
-];
+// ─── API helpers ──────────────────────────────────────────────────────────────
+
+async function authRequest(action: string, method: string, body?: object, token?: string) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["X-Session-Token"] = token;
+  const res = await fetch(`${AUTH_URL}?action=${action}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const raw = await res.json();
+  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return { ok: res.ok, data };
+}
+
+async function postsRequest(action: string, method: string, params?: Record<string, string>, body?: object, token?: string) {
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["X-Session-Token"] = token;
+  const qs = new URLSearchParams({ action, ...(params || {}) }).toString();
+  const res = await fetch(`${POSTS_URL}?${qs}`, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const raw = await res.json();
+  const data = typeof raw === "string" ? JSON.parse(raw) : raw;
+  return { ok: res.ok, data };
+}
+
+// ─── Static data ──────────────────────────────────────────────────────────────
 
 const DEMO_USERS = [
   { id: 1, name: "Артём_Про", avatar: "А", color: "#a855f7", posts: 284, rep: 1240, status: "активен", isBlocked: false },
@@ -54,6 +74,115 @@ const RULES = [
   { num: "06", title: "Система предупреждений", desc: "1 предупреждение — устное замечание. 2 — ограничение на 7 дней. 3 — перманентный бан. Апелляции через поддержку.", icon: "AlertTriangle", color: "#ef4444" },
 ];
 
+const CATEGORIES = ["Все", "Технологии", "Дизайн", "Программирование", "Бизнес", "Общее"];
+
+// ─── Create Post Modal ────────────────────────────────────────────────────────
+
+function CreatePostModal({ onClose, onCreated, token }: { onClose: () => void; onCreated: (post: Post) => void; token: string }) {
+  const [form, setForm] = useState({ title: "", content: "", category: "Общее" });
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+  const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
+
+  const submit = async () => {
+    setError("");
+    if (!form.title.trim() || !form.content.trim()) { setError("Заполните заголовок и текст"); return; }
+    setLoading(true);
+    try {
+      const { ok, data } = await postsRequest("create", "POST", {}, form, token);
+      if (!ok) { setError(data.error || "Ошибка"); return; }
+      onCreated(data.post);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.75)", backdropFilter: "blur(8px)" }}>
+      <div className="w-full max-w-lg glass-card rounded-2xl p-7 animate-slide-up relative" style={{ border: "1px solid rgba(168,85,247,0.25)" }}>
+        <button onClick={onClose} className="absolute top-4 right-4 text-white/30 hover:text-white/60 transition-colors">
+          <Icon name="X" size={20} />
+        </button>
+
+        <div className="flex items-center gap-3 mb-6">
+          <div className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+            <Icon name="PenLine" size={16} className="text-white" />
+          </div>
+          <div>
+            <h2 className="font-oswald text-lg font-bold text-white">НОВАЯ ТЕМА</h2>
+            <p className="text-white/40 text-xs">Поделитесь с сообществом</p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="text-white/50 text-xs mb-1 block">Заголовок</label>
+            <input
+              type="text"
+              value={form.title}
+              onChange={(e) => set("title", e.target.value)}
+              placeholder="О чём ваша тема?"
+              maxLength={200}
+              className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+              onFocus={(e) => (e.target.style.borderColor = "#a855f7")}
+              onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
+            />
+            <div className="text-right text-xs text-white/25 mt-1">{form.title.length}/200</div>
+          </div>
+
+          <div>
+            <label className="text-white/50 text-xs mb-1 block">Категория</label>
+            <div className="flex flex-wrap gap-2">
+              {["Технологии", "Дизайн", "Программирование", "Бизнес", "Общее"].map((cat) => (
+                <button
+                  key={cat}
+                  onClick={() => set("category", cat)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium transition-all ${form.category === cat ? "text-white" : "text-white/40 bg-white/5 hover:text-white/70"}`}
+                  style={form.category === cat ? { background: "linear-gradient(135deg, #a855f7, #3b82f6)" } : {}}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-white/50 text-xs mb-1 block">Текст</label>
+            <textarea
+              value={form.content}
+              onChange={(e) => set("content", e.target.value)}
+              placeholder="Расскажите подробнее..."
+              rows={5}
+              className="w-full px-4 py-3 rounded-xl text-white text-sm outline-none transition-all resize-none"
+              style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+              onFocus={(e) => (e.target.style.borderColor = "#a855f7")}
+              onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")}
+            />
+          </div>
+        </div>
+
+        {error && (
+          <div className="mt-3 px-3 py-2 rounded-lg text-sm flex items-center gap-2" style={{ background: "rgba(239,68,68,0.1)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+            <Icon name="AlertCircle" size={14} />{error}
+          </div>
+        )}
+
+        <div className="flex gap-3 mt-5">
+          <button onClick={onClose} className="flex-1 py-2.5 rounded-xl text-sm font-medium text-white/50 hover:text-white/80 transition-all" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            Отмена
+          </button>
+          <button onClick={submit} disabled={loading}
+            className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-white transition-all hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+            {loading ? <><Icon name="Loader2" size={15} className="animate-spin" />Публикую...</> : <><Icon name="Send" size={15} />Опубликовать</>}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Auth Modal ───────────────────────────────────────────────────────────────
 
 function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: User, token: string) => void }) {
@@ -61,7 +190,6 @@ function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: Us
   const [form, setForm] = useState({ username: "", email: "", login: "", password: "" });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
@@ -69,11 +197,11 @@ function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: Us
     setLoading(true);
     try {
       if (mode === "register") {
-        const { ok, data } = await apiRequest("register", "POST", { username: form.username, email: form.email, password: form.password });
+        const { ok, data } = await authRequest("register", "POST", { username: form.username, email: form.email, password: form.password });
         if (!ok) { setError(data.error || "Ошибка регистрации"); return; }
         onAuth(data.user, data.token);
       } else {
-        const { ok, data } = await apiRequest("login", "POST", { login: form.login, password: form.password });
+        const { ok, data } = await authRequest("login", "POST", { login: form.login, password: form.password });
         if (!ok) { setError(data.error || "Ошибка входа"); return; }
         onAuth(data.user, data.token);
       }
@@ -88,7 +216,6 @@ function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: Us
         <button onClick={onClose} className="absolute top-4 right-4 text-white/30 hover:text-white/60 transition-colors">
           <Icon name="X" size={20} />
         </button>
-
         <div className="flex items-center gap-3 mb-6">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
             <Icon name="Zap" size={18} className="text-white" />
@@ -101,12 +228,9 @@ function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: Us
 
         <div className="flex gap-1 mb-6 p-1 rounded-xl" style={{ background: "rgba(255,255,255,0.04)" }}>
           {(["login", "register"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => { setMode(m); setError(""); }}
+            <button key={m} onClick={() => { setMode(m); setError(""); }}
               className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${mode === m ? "text-white" : "text-white/40 hover:text-white/60"}`}
-              style={mode === m ? { background: "linear-gradient(135deg, rgba(168,85,247,0.3), rgba(59,130,246,0.2))" } : {}}
-            >
+              style={mode === m ? { background: "linear-gradient(135deg, rgba(168,85,247,0.3), rgba(59,130,246,0.2))" } : {}}>
               {m === "login" ? "Вход" : "Регистрация"}
             </button>
           ))}
@@ -114,22 +238,22 @@ function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: Us
 
         <div className="space-y-3">
           {mode === "register" && (
-            <div>
-              <label className="text-white/50 text-xs mb-1 block">Никнейм</label>
-              <input type="text" value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="Ваш никнейм"
-                className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
-                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-                onFocus={(e) => (e.target.style.borderColor = "#a855f7")} onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")} />
-            </div>
-          )}
-          {mode === "register" && (
-            <div>
-              <label className="text-white/50 text-xs mb-1 block">Email</label>
-              <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="your@email.com"
-                className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
-                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
-                onFocus={(e) => (e.target.style.borderColor = "#a855f7")} onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")} />
-            </div>
+            <>
+              <div>
+                <label className="text-white/50 text-xs mb-1 block">Никнейм</label>
+                <input type="text" value={form.username} onChange={(e) => set("username", e.target.value)} placeholder="Ваш никнейм"
+                  className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                  onFocus={(e) => (e.target.style.borderColor = "#a855f7")} onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")} />
+              </div>
+              <div>
+                <label className="text-white/50 text-xs mb-1 block">Email</label>
+                <input type="email" value={form.email} onChange={(e) => set("email", e.target.value)} placeholder="your@email.com"
+                  className="w-full px-4 py-2.5 rounded-xl text-white text-sm outline-none transition-all"
+                  style={{ background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.1)" }}
+                  onFocus={(e) => (e.target.style.borderColor = "#a855f7")} onBlur={(e) => (e.target.style.borderColor = "rgba(255,255,255,0.1)")} />
+              </div>
+            </>
           )}
           {mode === "login" && (
             <div>
@@ -157,9 +281,9 @@ function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: Us
         )}
 
         <button onClick={submit} disabled={loading}
-          className="w-full mt-5 py-3 rounded-xl font-semibold text-white text-sm transition-all hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
+          className="w-full mt-5 py-3 rounded-xl font-semibold text-white text-sm hover:opacity-90 disabled:opacity-50 flex items-center justify-center gap-2"
           style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
-          {loading ? <><Icon name="Loader2" size={16} className="animate-spin" /> Загрузка...</> : mode === "login" ? "Войти" : "Зарегистрироваться"}
+          {loading ? <><Icon name="Loader2" size={16} className="animate-spin" />Загрузка...</> : mode === "login" ? "Войти" : "Зарегистрироваться"}
         </button>
       </div>
     </div>
@@ -168,9 +292,9 @@ function AuthModal({ onClose, onAuth }: { onClose: () => void; onAuth: (user: Us
 
 // ─── NavBar ───────────────────────────────────────────────────────────────────
 
-function NavBar({ page, setPage, user, onAuthClick, onLogout }: {
+function NavBar({ page, setPage, user, onAuthClick, onLogout, onCreatePost }: {
   page: Page; setPage: (p: Page) => void;
-  user: User | null; onAuthClick: () => void; onLogout: () => void;
+  user: User | null; onAuthClick: () => void; onLogout: () => void; onCreatePost: () => void;
 }) {
   const nav = [
     { id: "home" as Page, label: "Главная", icon: "Home" },
@@ -199,23 +323,35 @@ function NavBar({ page, setPage, user, onAuthClick, onLogout }: {
           ))}
         </nav>
 
-        {user ? (
-          <div className="flex items-center gap-3">
-            <button onClick={() => setPage("profile")} className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-white/5 transition-all">
-              <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs" style={{ background: `${user.avatarColor}40`, border: `1px solid ${user.avatarColor}40` }}>
-                {user.avatarLetter}
-              </div>
-              <span className="text-white/80 text-sm font-medium hidden md:block">{user.username}</span>
+        <div className="flex items-center gap-2">
+          {user && (
+            <button onClick={onCreatePost}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-all"
+              style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+              <Icon name="Plus" size={15} />
+              <span className="hidden md:inline">Создать тему</span>
             </button>
-            <button onClick={onLogout} className="text-white/30 hover:text-white/60 transition-colors" title="Выйти">
-              <Icon name="LogOut" size={18} />
+          )}
+          {user ? (
+            <div className="flex items-center gap-2">
+              <button onClick={() => setPage("profile")} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-white/5 transition-all">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-white font-bold text-xs" style={{ background: `${user.avatarColor}40`, border: `1px solid ${user.avatarColor}40` }}>
+                  {user.avatarLetter}
+                </div>
+                <span className="text-white/80 text-sm font-medium hidden md:block">{user.username}</span>
+              </button>
+              <button onClick={onLogout} className="text-white/30 hover:text-white/60 transition-colors" title="Выйти">
+                <Icon name="LogOut" size={18} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={onAuthClick}
+              className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white hover:opacity-90 transition-all"
+              style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+              <Icon name="LogIn" size={15} />Войти
             </button>
-          </div>
-        ) : (
-          <button onClick={onAuthClick} className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white transition-all hover:opacity-90" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
-            <Icon name="LogIn" size={15} />Войти
-          </button>
-        )}
+          )}
+        </div>
       </div>
 
       <div className="md:hidden flex border-t border-white/5">
@@ -230,11 +366,94 @@ function NavBar({ page, setPage, user, onAuthClick, onLogout }: {
   );
 }
 
+// ─── Post Card ────────────────────────────────────────────────────────────────
+
+function PostCard({ post, index, onLike, onHide, canHide }: {
+  post: Post; index: number;
+  onLike: (id: number) => void;
+  onHide: (id: number) => void;
+  canHide: boolean;
+}) {
+  const [liked, setLiked] = useState(false);
+
+  const handleLike = () => {
+    if (liked) return;
+    setLiked(true);
+    onLike(post.id);
+  };
+
+  return (
+    <div className="glass-card rounded-xl p-5 transition-all duration-200 animate-slide-up group" style={{ animationDelay: `${index * 0.06}s` }}>
+      <div className="flex items-start gap-4">
+        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0"
+          style={{ background: `${post.color}30`, border: `1px solid ${post.color}40` }}>
+          {post.avatar}
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-2 flex-wrap">
+            {post.isPinned && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ background: "rgba(168,85,247,0.15)", color: "#a855f7" }}>
+                <Icon name="Pin" size={10} /> Закреплено
+              </span>
+            )}
+            <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>{post.category}</span>
+          </div>
+          <h3 className="font-semibold text-white group-hover:text-purple-300 transition-colors mb-1 text-base">{post.title}</h3>
+          <p className="text-white/40 text-sm line-clamp-2">{post.preview}</p>
+          <div className="flex items-center gap-4 mt-3 text-xs text-white/35">
+            <span className="font-medium" style={{ color: post.color }}>{post.author}</span>
+            <span>{post.time}</span>
+            <button
+              onClick={handleLike}
+              className={`flex items-center gap-1 transition-all ${liked ? "text-pink-400" : "hover:text-pink-400"}`}
+            >
+              <Icon name={liked ? "HeartHandshake" : "Heart"} size={12} />{post.likes + (liked ? 1 : 0)}
+            </button>
+            <div className="flex items-center gap-1"><Icon name="MessageSquare" size={12} />{post.comments}</div>
+            <div className="flex items-center gap-1"><Icon name="Eye" size={12} />{post.views}</div>
+            {canHide && (
+              <button onClick={() => onHide(post.id)} className="flex items-center gap-1 ml-auto text-white/20 hover:text-red-400 transition-colors">
+                <Icon name="Trash2" size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Home Page ────────────────────────────────────────────────────────────────
 
-function HomePage({ onAuthClick, user }: { onAuthClick: () => void; user: User | null }) {
+function HomePage({ user, onAuthClick, onCreatePost, token }: {
+  user: User | null; onAuthClick: () => void; onCreatePost: () => void; token: string;
+}) {
   const [activeCategory, setActiveCategory] = useState("Все");
-  const categories = ["Все", "Технологии", "Дизайн", "Программирование", "Бизнес"];
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchPosts = useCallback(async (cat: string) => {
+    setLoading(true);
+    const params: Record<string, string> = { limit: "20" };
+    if (cat !== "Все") params.category = cat;
+    const { data } = await postsRequest("list", "GET", params);
+    setPosts(data.posts || []);
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { fetchPosts(activeCategory); }, [activeCategory, fetchPosts]);
+
+  const handleLike = async (id: number) => {
+    setPosts((prev) => prev.map((p) => p.id === id ? { ...p, likes: p.likes + 1 } : p));
+    await postsRequest("like", "POST", { id: String(id) });
+  };
+
+  const handleHide = async (id: number) => {
+    setPosts((prev) => prev.filter((p) => p.id !== id));
+    await postsRequest("hide", "POST", { id: String(id) }, undefined, token);
+  };
+
+  const canHide = user?.role === "moderator" || user?.role === "admin";
 
   return (
     <div className="animate-fade-in">
@@ -243,41 +462,26 @@ function HomePage({ onAuthClick, user }: { onAuthClick: () => void; user: User |
         <div className="relative">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-medium mb-4" style={{ background: "rgba(0,255,136,0.1)", color: "#00ff88", border: "1px solid rgba(0,255,136,0.2)" }}>
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse inline-block" />
-            1 203 участника онлайн
+            Сообщество онлайн
           </div>
           <h1 className="font-oswald text-4xl md:text-5xl font-bold text-white mb-3 tracking-wide">
             ДОБРО ПОЖАЛОВАТЬ<br /><span className="neon-text-purple">В СООБЩЕСТВО</span>
           </h1>
           <p className="text-white/60 text-lg max-w-lg mb-5">Место, где идеи становятся обсуждениями, а незнакомцы — единомышленниками.</p>
-          {!user && (
+          {!user ? (
             <button onClick={onAuthClick} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white text-sm hover:opacity-90 transition-all" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
               <Icon name="UserPlus" size={16} />Присоединиться
+            </button>
+          ) : (
+            <button onClick={onCreatePost} className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl font-semibold text-white text-sm hover:opacity-90 transition-all" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+              <Icon name="PenLine" size={16} />Создать тему
             </button>
           )}
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-        {[
-          { label: "Участников", value: "12 847", icon: "Users", color: "#a855f7" },
-          { label: "Постов сегодня", value: "384", icon: "FileText", color: "#00ff88" },
-          { label: "Онлайн сейчас", value: "1 203", icon: "Wifi", color: "#3b82f6" },
-          { label: "Тем всего", value: "47 290", icon: "MessageSquare", color: "#ec4899" },
-        ].map((s, i) => (
-          <div key={i} className="glass-card rounded-xl p-4 animate-slide-up" style={{ animationDelay: `${i * 0.08}s` }}>
-            <div className="flex items-center gap-3 mb-2">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: `${s.color}20` }}>
-                <Icon name={s.icon} size={16} style={{ color: s.color }} />
-              </div>
-              <span className="text-white/50 text-xs">{s.label}</span>
-            </div>
-            <div className="font-oswald text-2xl font-bold text-white">{s.value}</div>
-          </div>
-        ))}
-      </div>
-
       <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
-        {categories.map((cat) => (
+        {CATEGORIES.map((cat) => (
           <button key={cat} onClick={() => setActiveCategory(cat)}
             className={`flex-shrink-0 px-4 py-1.5 rounded-full text-sm font-medium transition-all duration-200 ${activeCategory === cat ? "text-white" : "text-white/50 hover:text-white/80 bg-white/5"}`}
             style={activeCategory === cat ? { background: "linear-gradient(135deg, #a855f7, #3b82f6)" } : {}}>
@@ -286,40 +490,60 @@ function HomePage({ onAuthClick, user }: { onAuthClick: () => void; user: User |
         ))}
       </div>
 
-      <div className="space-y-3">
-        {DEMO_POSTS.filter((p) => activeCategory === "Все" || p.category === activeCategory).map((post, i) => (
-          <div key={post.id} className="glass-card rounded-xl p-5 cursor-pointer hover:bg-white/6 transition-all duration-200 animate-slide-up group" style={{ animationDelay: `${i * 0.07}s` }}>
-            <div className="flex items-start gap-4">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ background: `${post.color}30`, border: `1px solid ${post.color}40` }}>
-                {post.avatar}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  {post.isPinned && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ background: "rgba(168,85,247,0.15)", color: "#a855f7" }}><Icon name="Pin" size={10} /> Закреплено</span>}
-                  {post.isHot && <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium" style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>🔥 Горячее</span>}
-                  <span className="text-xs px-2 py-0.5 rounded" style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)" }}>{post.category}</span>
-                </div>
-                <h3 className="font-semibold text-white group-hover:text-purple-300 transition-colors mb-1 text-base">{post.title}</h3>
-                <p className="text-white/40 text-sm line-clamp-1">{post.preview}</p>
-                <div className="flex items-center gap-4 mt-3 text-xs text-white/35">
-                  <span className="font-medium" style={{ color: post.color }}>{post.author}</span>
-                  <span>{post.time}</span>
-                  <div className="flex items-center gap-1"><Icon name="Heart" size={12} />{post.likes}</div>
-                  <div className="flex items-center gap-1"><Icon name="MessageSquare" size={12} />{post.comments}</div>
-                  <div className="flex items-center gap-1"><Icon name="Eye" size={12} />{post.views}</div>
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="glass-card rounded-xl p-5 animate-pulse">
+              <div className="flex gap-4">
+                <div className="w-10 h-10 rounded-xl bg-white/5 flex-shrink-0" />
+                <div className="flex-1 space-y-2">
+                  <div className="h-4 bg-white/5 rounded w-3/4" />
+                  <div className="h-3 bg-white/5 rounded w-full" />
+                  <div className="h-3 bg-white/5 rounded w-1/2" />
                 </div>
               </div>
             </div>
+          ))}
+        </div>
+      ) : posts.length === 0 ? (
+        <div className="text-center py-16">
+          <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4" style={{ background: "rgba(168,85,247,0.1)" }}>
+            <Icon name="MessageSquarePlus" size={28} className="text-purple-400" />
           </div>
-        ))}
-      </div>
+          <p className="text-white/40 mb-4">Тем ещё нет. Будьте первым!</p>
+          {user && (
+            <button onClick={onCreatePost} className="px-5 py-2.5 rounded-xl font-semibold text-white text-sm hover:opacity-90 transition-all" style={{ background: "linear-gradient(135deg, #a855f7, #3b82f6)" }}>
+              Создать первую тему
+            </button>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {posts.map((post, i) => (
+            <PostCard key={post.id} post={post} index={i} onLike={handleLike} onHide={handleHide} canHide={canHide} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
 // ─── Profile Page ─────────────────────────────────────────────────────────────
 
-function ProfilePage({ user, onAuthClick }: { user: User | null; onAuthClick: () => void }) {
+function ProfilePage({ user, onAuthClick, token }: { user: User | null; onAuthClick: () => void; token: string }) {
+  const [myPosts, setMyPosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setLoadingPosts(true);
+    postsRequest("list", "GET", { limit: "50" }).then(({ data }) => {
+      const mine = (data.posts || []).filter((p: Post) => p.userId === user.id);
+      setMyPosts(mine);
+      setLoadingPosts(false);
+    });
+  }, [user]);
+
   if (!user) {
     return (
       <div className="animate-fade-in flex flex-col items-center justify-center py-24 text-center">
@@ -335,10 +559,10 @@ function ProfilePage({ user, onAuthClick }: { user: User | null; onAuthClick: ()
     );
   }
 
-  const badges = [
-    { name: "Участник", icon: "Award", color: "#00ff88" },
-    { name: "Новичок", icon: "Star", color: "#f59e0b" },
-  ];
+  const handleHideOwn = async (id: number) => {
+    setMyPosts((prev) => prev.filter((p) => p.id !== id));
+    await postsRequest("hide", "POST", { id: String(id) }, undefined, token);
+  };
 
   return (
     <div className="animate-fade-in">
@@ -361,9 +585,9 @@ function ProfilePage({ user, onAuthClick }: { user: User | null; onAuthClick: ()
           </div>
           <div className="grid grid-cols-3 gap-4 text-center">
             {[
-              { label: "Постов", val: user.postsCount.toString() },
-              { label: "Репутация", val: user.reputation.toString() },
-              { label: "Статус", val: "Онлайн" },
+              { label: "Постов", val: myPosts.length || user.postsCount },
+              { label: "Репутация", val: user.reputation },
+              { label: "Лайков", val: myPosts.reduce((s, p) => s + p.likes, 0) },
             ].map((s) => (
               <div key={s.label}>
                 <div className="font-oswald text-xl font-bold text-white">{s.val}</div>
@@ -374,47 +598,28 @@ function ProfilePage({ user, onAuthClick }: { user: User | null; onAuthClick: ()
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-6">
-        <div className="md:col-span-2">
-          <h3 className="font-oswald text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <Icon name="Activity" size={18} className="text-purple-400" />
-            ПОСЛЕДНЯЯ АКТИВНОСТЬ
-          </h3>
-          <div className="space-y-3">
-            {[
-              { text: "Зарегистрировался на форуме", time: new Date(user.createdAt).toLocaleDateString("ru-RU"), icon: "UserPlus", color: "#00ff88" },
-              { text: "Стал участником сообщества", time: "Добро пожаловать!", icon: "Award", color: "#a855f7" },
-            ].map((act, i) => (
-              <div key={i} className="glass-card rounded-xl p-4 flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ background: `${act.color}20` }}>
-                  <Icon name={act.icon} size={15} style={{ color: act.color }} />
-                </div>
-                <div>
-                  <p className="text-white/80 text-sm">{act.text}</p>
-                  <p className="text-white/35 text-xs mt-1">{act.time}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+      <h3 className="font-oswald text-lg font-bold text-white mb-4 flex items-center gap-2">
+        <Icon name="FileText" size={18} className="text-purple-400" />
+        МОИ ТЕМЫ
+        <span className="text-white/30 text-sm font-golos font-normal">({myPosts.length})</span>
+      </h3>
 
-        <div>
-          <h3 className="font-oswald text-lg font-bold text-white mb-4 flex items-center gap-2">
-            <Icon name="Award" size={18} className="text-yellow-400" />
-            ДОСТИЖЕНИЯ
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            {badges.map((b, i) => (
-              <div key={i} className="glass-card rounded-xl p-3 flex flex-col items-center gap-2 text-center gradient-border">
-                <div className="w-10 h-10 rounded-full flex items-center justify-center" style={{ background: `${b.color}20` }}>
-                  <Icon name={b.icon} size={20} style={{ color: b.color }} />
-                </div>
-                <span className="text-xs text-white/60">{b.name}</span>
-              </div>
-            ))}
-          </div>
+      {loadingPosts ? (
+        <div className="glass-card rounded-xl p-5 animate-pulse">
+          <div className="h-4 bg-white/5 rounded w-1/2 mb-2" /><div className="h-3 bg-white/5 rounded w-full" />
         </div>
-      </div>
+      ) : myPosts.length === 0 ? (
+        <div className="glass-card rounded-xl p-8 text-center text-white/30">
+          <Icon name="PenLine" size={28} className="mx-auto mb-2 opacity-30" />
+          <p>Вы ещё не создавали тем</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {myPosts.map((post, i) => (
+            <PostCard key={post.id} post={post} index={i} onLike={() => {}} onHide={handleHideOwn} canHide={true} />
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -489,14 +694,23 @@ function RulesPage() {
 
 // ─── Moderation Page ──────────────────────────────────────────────────────────
 
-function ModerationPage({ user, onAuthClick }: { user: User | null; onAuthClick: () => void }) {
+function ModerationPage({ user, onAuthClick, token }: { user: User | null; onAuthClick: () => void; token: string }) {
   const [modUsers, setModUsers] = useState(DEMO_USERS);
-  const [posts, setPosts] = useState(DEMO_POSTS);
+  const [posts, setPosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
   const [deletedCount, setDeletedCount] = useState(0);
   const [activeTab, setActiveTab] = useState<"posts" | "users">("posts");
   const [notification, setNotification] = useState<string | null>(null);
 
   const notify = (msg: string) => { setNotification(msg); setTimeout(() => setNotification(null), 3000); };
+
+  useEffect(() => {
+    if (!user) return;
+    postsRequest("list", "GET", { limit: "50" }).then(({ data }) => {
+      setPosts(data.posts || []);
+      setLoadingPosts(false);
+    });
+  }, [user]);
 
   if (!user) {
     return (
@@ -512,6 +726,13 @@ function ModerationPage({ user, onAuthClick }: { user: User | null; onAuthClick:
       </div>
     );
   }
+
+  const handleHide = async (id: number) => {
+    setPosts((prev) => prev.filter((p) => p.id !== id));
+    setDeletedCount((n) => n + 1);
+    await postsRequest("hide", "POST", { id: String(id) }, undefined, token);
+    notify("Пост удалён");
+  };
 
   return (
     <div className="animate-fade-in">
@@ -531,8 +752,8 @@ function ModerationPage({ user, onAuthClick }: { user: User | null; onAuthClick:
 
       <div className="grid grid-cols-3 gap-4 mb-6">
         {[
-          { label: "Жалоб сегодня", val: "7", color: "#ef4444", icon: "Flag" },
-          { label: "Удалено постов", val: deletedCount.toString(), color: "#f59e0b", icon: "Trash2" },
+          { label: "Постов в ленте", val: posts.length.toString(), color: "#3b82f6", icon: "FileText" },
+          { label: "Удалено", val: deletedCount.toString(), color: "#f59e0b", icon: "Trash2" },
           { label: "Заблокировано", val: modUsers.filter((u) => u.isBlocked).length.toString(), color: "#a855f7", icon: "UserX" },
         ].map((s, i) => (
           <div key={i} className="glass-card rounded-xl p-4">
@@ -557,14 +778,14 @@ function ModerationPage({ user, onAuthClick }: { user: User | null; onAuthClick:
 
       {activeTab === "posts" && (
         <div className="space-y-3">
-          {posts.length === 0 && (
+          {loadingPosts && <div className="glass-card rounded-xl p-5 animate-pulse"><div className="h-4 bg-white/5 rounded w-1/2" /></div>}
+          {!loadingPosts && posts.length === 0 && (
             <div className="text-center py-12 text-white/30">
-              <Icon name="CheckCircle" size={40} className="mx-auto mb-3 opacity-30" />
-              <p>Все посты обработаны</p>
+              <Icon name="CheckCircle" size={40} className="mx-auto mb-3 opacity-30" /><p>Нет постов для модерации</p>
             </div>
           )}
           {posts.map((post, i) => (
-            <div key={post.id} className="glass-card rounded-xl p-4 flex items-start gap-4 animate-slide-up" style={{ animationDelay: `${i * 0.05}s` }}>
+            <div key={post.id} className="glass-card rounded-xl p-4 flex items-start gap-4 animate-slide-up" style={{ animationDelay: `${i * 0.04}s` }}>
               <div className="w-9 h-9 rounded-lg flex items-center justify-center text-white font-bold text-sm flex-shrink-0" style={{ background: `${post.color}30` }}>
                 {post.avatar}
               </div>
@@ -572,19 +793,13 @@ function ModerationPage({ user, onAuthClick }: { user: User | null; onAuthClick:
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <h4 className="font-medium text-white text-sm">{post.title}</h4>
-                    <p className="text-white/40 text-xs mt-0.5">{post.author} · {post.time}</p>
+                    <p className="text-white/40 text-xs mt-0.5">{post.author} · {post.time} · <span style={{ color: "rgba(168,85,247,0.7)" }}>{post.category}</span></p>
                   </div>
-                  <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => { setPosts((p) => p.filter((x) => x.id !== post.id)); setDeletedCount((n) => n + 1); notify("Пост удалён"); }}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                      style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
-                      <Icon name="Trash2" size={12} />Удалить
-                    </button>
-                    <button className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
-                      style={{ background: "rgba(255,255,255,0.05)", color: "rgba(255,255,255,0.5)", border: "1px solid rgba(255,255,255,0.08)" }}>
-                      <Icon name="Pin" size={12} />Закрепить
-                    </button>
-                  </div>
+                  <button onClick={() => handleHide(post.id)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium flex-shrink-0"
+                    style={{ background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
+                    <Icon name="Trash2" size={12} />Удалить
+                  </button>
                 </div>
               </div>
             </div>
@@ -608,7 +823,8 @@ function ModerationPage({ user, onAuthClick }: { user: User | null; onAuthClick:
                 </div>
                 <p className="text-white/40 text-xs">{u.posts} постов · Репутация: <span style={{ color: u.rep >= 0 ? "#00ff88" : "#ef4444" }}>{u.rep > 0 ? "+" : ""}{u.rep}</span></p>
               </div>
-              <button onClick={() => { setModUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, isBlocked: !x.isBlocked } : x)); notify(u.isBlocked ? `${u.name} разблокирован` : `${u.name} заблокирован`); }}
+              <button
+                onClick={() => { setModUsers((prev) => prev.map((x) => x.id === u.id ? { ...x, isBlocked: !x.isBlocked } : x)); notify(u.isBlocked ? `${u.name} разблокирован` : `${u.name} заблокирован`); }}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium"
                 style={u.isBlocked ? { background: "rgba(0,255,136,0.15)", color: "#00ff88", border: "1px solid rgba(0,255,136,0.2)" } : { background: "rgba(239,68,68,0.15)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.2)" }}>
                 <Icon name={u.isBlocked ? "UserCheck" : "UserX"} size={12} />
@@ -627,45 +843,53 @@ function ModerationPage({ user, onAuthClick }: { user: User | null; onAuthClick:
 export default function App() {
   const [page, setPage] = useState<Page>("home");
   const [user, setUser] = useState<User | null>(null);
+  const [token, setToken] = useState("");
   const [showAuth, setShowAuth] = useState(false);
+  const [showCreate, setShowCreate] = useState(false);
 
   useEffect(() => {
-    const token = localStorage.getItem("forum_token");
-    if (token) {
-      apiRequest("me", "GET", undefined, token).then(({ ok, data }) => {
+    const saved = localStorage.getItem("forum_token");
+    if (saved) {
+      setToken(saved);
+      authRequest("me", "GET", undefined, saved).then(({ ok, data }) => {
         if (ok) setUser(data.user);
-        else localStorage.removeItem("forum_token");
+        else { localStorage.removeItem("forum_token"); setToken(""); }
       });
     }
   }, []);
 
-  const handleAuth = (u: User, token: string) => {
-    setUser(u);
-    localStorage.setItem("forum_token", token);
+  const handleAuth = (u: User, t: string) => {
+    setUser(u); setToken(t);
+    localStorage.setItem("forum_token", t);
     setShowAuth(false);
   };
 
   const handleLogout = async () => {
-    const token = localStorage.getItem("forum_token");
-    if (token) await apiRequest("logout", "POST", undefined, token);
-    setUser(null);
+    if (token) await authRequest("logout", "POST", undefined, token);
+    setUser(null); setToken("");
     localStorage.removeItem("forum_token");
+  };
+
+  const handleCreated = (post: Post) => {
+    setShowCreate(false);
+    setPage("home");
   };
 
   const renderPage = () => {
     switch (page) {
-      case "home": return <HomePage user={user} onAuthClick={() => setShowAuth(true)} />;
-      case "profile": return <ProfilePage user={user} onAuthClick={() => setShowAuth(true)} />;
+      case "home": return <HomePage user={user} onAuthClick={() => setShowAuth(true)} onCreatePost={() => setShowCreate(true)} token={token} />;
+      case "profile": return <ProfilePage user={user} onAuthClick={() => setShowAuth(true)} token={token} />;
       case "rules": return <RulesPage />;
-      case "moderation": return <ModerationPage user={user} onAuthClick={() => setShowAuth(true)} />;
+      case "moderation": return <ModerationPage user={user} onAuthClick={() => setShowAuth(true)} token={token} />;
     }
   };
 
   return (
     <div className="min-h-screen bg-background grid-bg">
-      <NavBar page={page} setPage={setPage} user={user} onAuthClick={() => setShowAuth(true)} onLogout={handleLogout} />
+      <NavBar page={page} setPage={setPage} user={user} onAuthClick={() => setShowAuth(true)} onLogout={handleLogout} onCreatePost={() => setShowCreate(true)} />
       <main className="max-w-6xl mx-auto px-4 pt-24 pb-12">{renderPage()}</main>
       {showAuth && <AuthModal onClose={() => setShowAuth(false)} onAuth={handleAuth} />}
+      {showCreate && user && <CreatePostModal onClose={() => setShowCreate(false)} onCreated={handleCreated} token={token} />}
     </div>
   );
 }
